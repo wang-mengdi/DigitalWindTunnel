@@ -1,0 +1,1 @@
+For details, Please see [url]http://wmdcstdio.com/2017/11/23/subsonic-supersonic-quasi-1d-isentropic-nozzle-flow/[/url]
