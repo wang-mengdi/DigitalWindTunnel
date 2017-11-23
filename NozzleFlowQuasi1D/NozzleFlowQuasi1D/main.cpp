@@ -11,12 +11,15 @@ described in chapter 7.
 #include<cstring>
 #include<cmath>
 using namespace std;
+enum FlowType { TRANSONIC, SUBSONIC };
 typedef double Float;
 const int GRIDL = 31;
 const Float C = 0.5;//Courant number
 const Float gamma = 1.4;//specific heats for standard day condition
 class NDGrid {//all values are nondimensional
 public:
+	FlowType sol_type;
+	Float pressure_ratio;//for subsonic flow, we need to stipulate pn/p0
 	Float dx, dt;
 	//"nondimensional" values described in page 297
 	Float rho[GRIDL];//density field
@@ -30,14 +33,30 @@ public:
 			printf("%8.1lf%8.3lf%8.3lf%8.3lf%8.3lf%8.3lf\n", dx*i, A[i], rho[i], V[i], T[i], V[i] / sqrt(T[i]));
 		}
 	}
-	void init(void) {
+	void init(FlowType t) {
+		sol_type = t;
 		dx = 3.0 / (GRIDL - 1);
 		for (int i = 0; i < GRIDL; i++) {
 			Float x = dx*i;
-			A[i] = (1 + 2.2*(x - 1.5)*(x - 1.5)) / 1.0;
-			rho[i] = 1.0 - 0.3146*x;
-			T[i] = 1.0 - 0.2314*x;
-			V[i] = (0.1 + 1.09*x)*sqrt(T[i]);
+			if (sol_type == TRANSONIC) {
+				A[i] = (1 + 2.2*(x - 1.5)*(x - 1.5)) / 1.0;
+				rho[i] = 1.0 - 0.3146*x;
+				T[i] = 1.0 - 0.2314*x;
+				V[i] = (0.1 + 1.09*x)*sqrt(T[i]);
+			}
+			else if (sol_type == SUBSONIC) {
+				if (x <= 1.5) {
+					//equation 7.80a
+					A[i] = 1 + 2.2*(x - 1.5)*(x - 1.5);
+				}
+				else {
+					//equation 7.80b
+					A[i] = 1 + 0.2223*(x - 1.5)*(x - 1.5);
+				}
+				rho[i] = 1 - 0.023*x;
+				T[i] = 1 - 0.009333*x;
+				V[i] = 0.05 + 0.11*x;
+			}
 		}
 		calc_dt();
 	}
@@ -118,15 +137,16 @@ public:
 			H.V[i] = V[i] + dt*V_dt0[i];
 			H.T[i] = T[i] + dt*T_dt0[i];
 		}
+		//for transonic and subsonic flow, inflow boundary conditions are the same
 		H.rho[0] = 1;
 		H.T[0] = 1;
+		if (sol_type == SUBSONIC) {
+			H.T[GRIDL - 1] = pressure_ratio / H.rho[GRIDL - 1];
+		}
 		static Float rho_dt1[GRIDL], V_dt1[GRIDL], T_dt1[GRIDL];
 		H.continuity_dt_rwd(rho_dt1);
 		H.momentum_dt_rwd(V_dt1);
 		H.energy_dt_rwd(T_dt1);
-		//for (int i = 0; i < GRIDL; i++) { cout << V_dt0[i] << " "; }cout << endl;
-		//cout << H.V[15] << " " << H.T[15] << endl;
-		//cout << rho_dt1[15] << endl;
 		for (int i = 0; i < GRIDL; i++) {
 			rho[i] = rho[i] + dt*(rho_dt0[i] + rho_dt1[i]) / 2.0;
 			V[i] = V[i] + dt*(V_dt0[i] + V_dt1[i]) / 2.0;
@@ -134,17 +154,26 @@ public:
 		}
 		rho[0] = 1;
 		T[0] = 1;
+		if (sol_type == SUBSONIC) {
+			T[GRIDL - 1] = pressure_ratio / rho[GRIDL - 1];
+		}
 	}
 };
 NDGrid G;
 int main() {
-	G.init();
+	//run transonic flow:
+	G.init(TRANSONIC);
 	G.print();
 	for (int t = 0; t < 1400; t++) {
-		//printf("iteration %d\n", t);
 		G.MacCormack_Step();
-		//G.print();
-		//printf("\n\n");
+	}
+	G.print();
+	//run subsonic flow:
+	G.init(SUBSONIC);
+	G.pressure_ratio = 0.93;
+	G.print();
+	for (int t = 0; t < 5000; t++) {
+		G.MacCormack_Step();
 	}
 	G.print();
 	system("pause");
